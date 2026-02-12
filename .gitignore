@@ -1,5 +1,5 @@
 data/
-outputs/
+/pretrain/outputs/
 __pycache__
 **/__pycache__/**
 others/

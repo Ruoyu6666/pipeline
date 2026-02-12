@@ -33,7 +33,8 @@ import timm.optim.optim_factory as optim_factory
 import util.misc as misc
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 
-from engine_pretrain import train_one_epoch
+from engine.engine_pretrain import train_one_epoch
+
 
 
 def import_class(name):
