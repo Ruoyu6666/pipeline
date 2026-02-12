@@ -40,6 +40,7 @@ def make_dirs(save_dir):
 
 
 def save_checkpoint(model, optimizer, epoch, args):
+    """Saves the model checkpoint"""
     SAVE_CHECKPOINT_PATH = args.save_dir + 'checkpoints'
     checkpoint = {
         'model': model.state_dict(),
@@ -52,6 +53,7 @@ def save_checkpoint(model, optimizer, epoch, args):
 
 
 def save_model(model, optimizer, args):
+    """Saves the final model after training"""
     SAVE_MODEL_PATH = args.save_dir + 'models'
     os.makedirs(SAVE_MODEL_PATH, exist_ok=True)
     model = {
@@ -70,6 +72,7 @@ def load_checkpoint(model, optimizer, filename, device):
     epoch = checkpoint['epoch']
     args = checkpoint['args']
     return model, optimizer, epoch, args
+
 
 
 def save_results(results, args, timestamp):
