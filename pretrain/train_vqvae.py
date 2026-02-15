@@ -64,7 +64,7 @@ def get_args_parser():
 
 
 
-def train_vqvae(model, loader_train, optimizer, device, writer, timestamp, args):
+def train(model, loader_train, optimizer, device, writer, timestamp, args):
     # checkpoint path
     if os.path.exists(os.path.join(args.save_dir, 'checkpoints')):
         print('Checkpoint Directory Already Exists - if continue will overwrite files inside. Press c to continue.')
@@ -135,6 +135,7 @@ def compute_representations(model, loader, device ,args):
     os.makedirs(args.save_dir + '/representations', exist_ok=True)
     model = model.to(device)
     model.eval()
+    
     all_representations = []
     all_encoding =  []
     all_encoding_indices = []
@@ -206,7 +207,7 @@ if args.job == "train":
 
     """Set up optimizer and training loop"""
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, amsgrad=True)
-    train_vqvae(model, loader_train, optimizer, device, None, timestamp, args)
+    train(model, loader_train, optimizer, device, None, timestamp, args)
 
 
 
@@ -217,16 +218,16 @@ if args.job == "compute_representations":
     model.load_state_dict(torch.load(args.ckpt_path, map_location=device, weights_only=False)["model"])
     path_test_data = args.path_to_data_dir.replace("train", "test")
 
-    dataset_test = MabeMouseDataset(path_to_data_dir=path_test_data,
-                                    sampling_rate=args.sampling_rate,
-                                    num_frames=args.num_frames, 
-                                    sliding_window=args.sliding_window,
-                                    if_fill=args.if_fill_holes,
-                                    patch_size=args.patch_size,
-                                    cache_path=args.cache_path, cache=args.cache,
-                                    augmentations=None,)
+    dataset = MabeMouseDataset(path_to_data_dir=path_test_data,
+                                sampling_rate=args.sampling_rate,
+                                num_frames=args.num_frames, 
+                                sliding_window=args.sliding_window,
+                                if_fill=args.if_fill_holes,
+                                patch_size=args.patch_size,
+                                cache_path=args.cache_path, cache=args.cache,
+                                augmentations=None,)
 
-    loader_test = DataLoader(dataset_test, #sampler=sampler_test, batch_size=args.batch_size, 
+    loader_test = DataLoader(dataset, #sampler=sampler_test, batch_size=args.batch_size, 
                              num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=False,)
     
     compute_representations(model, loader_test, device, args)

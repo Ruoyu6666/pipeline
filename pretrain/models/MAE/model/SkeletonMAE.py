@@ -3,17 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 import warnings
-from .drop import DropPath
-from .layers import MLP, SkeleEmbed, Block, trunc_normal_
+from .layers import MLP, SkeleEmbed, Block, trunc_normal_, DropPath
 
 
 
 class SkeletonMAE(nn.Module):
-    def __init__(self, dim_in=3, dim_feat=256, decoder_dim_feat=256,
-                 depth=5, decoder_depth=5, num_heads=8, mlp_ratio=4,
+    def __init__(self, dim_in=3, dim_feat=256, decoder_dim_feat=256, depth=5, decoder_depth=5, 
+                 num_heads=8, mlp_ratio=4,
                  num_frames=120, num_joints=25, patch_size=1, t_patch_size=4,
                  qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, norm_skes_loss=False):
+                 drop_path_rate=0., norm_layer=nn.LayerNorm, 
+                 norm_skes_loss=False):
         
         super().__init__()
         self.dim_feat = dim_feat

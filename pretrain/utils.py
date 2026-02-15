@@ -39,7 +39,7 @@ def make_dirs(save_dir):
 
 
 
-def save_checkpoint(model, optimizer, epoch, args):
+def save_checkpoint(model, optimizer, epoch, args, type):
     """Saves the model checkpoint"""
     SAVE_CHECKPOINT_PATH = args.save_dir + 'checkpoints'
     checkpoint = {
@@ -75,7 +75,7 @@ def load_checkpoint(model, optimizer, filename, device):
 
 
 
-def save_results(results, args, timestamp):
+def save_results(results, args):
     SAVE_RESULT_PATH = args.save_dir + 'results'
     os.makedirs(SAVE_RESULT_PATH, exist_ok=True)
     # to change

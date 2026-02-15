@@ -5,8 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 import warnings
-from .layers import MLP, SkeleEmbed, Block, Attention, trunc_normal_
-from .drop import DropPath
+from .layers import MLP, SkeleEmbed, Block, Attention, trunc_normal_, DropPath
 
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
@@ -45,6 +44,7 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
 
 
 
+
 class ActionHeadLinprobe(nn.Module):
     def __init__(self, dim_feat=512, num_classes=60, num_joints=25):
         super(ActionHeadLinprobe, self).__init__()
@@ -52,7 +52,7 @@ class ActionHeadLinprobe(nn.Module):
         
     def forward(self, feat):
         N, M, T, J, C = feat.shape
-        feat = feat.mean(dim=[1,2,3])
+        feat = feat.mean(dim=[1,2,3]) # [N, C]
         feat = self.fc(feat)
         return feat
 
@@ -85,12 +85,13 @@ class ActionHeadFinetune(nn.Module):
 
 
 
-class Transformer(nn.Module):
-    def __init__(self, dim_in=3, num_classes=3, dim_feat=256,
-                 depth=5, num_heads=8, mlp_ratio=4,
+class STTFEncoder(nn.Module):
+    def __init__(self, dim_in=3, num_classes=3, dim_feat=256, depth=5, 
+                 num_heads=8, mlp_ratio=4,
                  num_frames=120, num_joints=25, patch_size=1, t_patch_size=4,
                  qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, protocol='linprobe'):
+                 drop_path_rate=0., norm_layer=nn.LayerNorm, 
+                 protocol='linprobe'):
         super().__init__()
 
         self.num_classes = num_classes
@@ -109,15 +110,23 @@ class Transformer(nn.Module):
             Block(
                 dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
-            for i in range(depth)])
+                for i in range(depth)])
         self.norm = norm_layer(dim_feat)
 
         if protocol == 'linprobe':
             self.head = ActionHeadLinprobe(dim_feat=dim_feat, num_classes=num_classes)
         elif protocol == 'finetune':
             self.head = ActionHeadFinetune(dropout_ratio=0.3, dim_feat=dim_feat, num_classes=num_classes)
+        """
+        elif protocol == 'compute_representations': # only compute representaton no training
+            self.head == None
+        # maybe we can also add a protocol for linear probing with temporal pooling, 
+        # i.e., pool the features across time and joints and then apply a linear classifier. 
+        # This may be more effective for action recognition than the current linprobe protocol which applies linear classifier on each joint separately and then averages the predictions across joints. We can call this protocol 'linprobe_temporal_pooling' or something like that.
         else:
             raise TypeError('Unrecognized evaluation protocol!')
+        """
+        self.protocol = protocol
 
         self.temp_embed = nn.Parameter(torch.zeros(1, num_frames//t_patch_size, 1, dim_feat))
         self.pos_embed = nn.Parameter(torch.zeros(1, 1, num_joints//patch_size, dim_feat))
@@ -139,23 +148,29 @@ class Transformer(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x):
-        N, C, T, V, M = x.shape
-        x = x.permute(0, 4, 2, 3, 1).contiguous().view(N * M, T, V, C)
-
-        # embed skeletons
-        x = self.joints_embed(x)
+        #N, C, T, V, M = x.shape # [32, 300, 3, 12, 2]
+        #x = x.permute(0, 4, 2, 3, 1).contiguous().view(N * M, T, V, C)
+        
+        # Modified for mabe dataset
+        N, T, M, V, C = x.shape # for mabe dataset, M is number of mice. (batch_size, T, 3, V=12, C=2)
+        x = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, T, V, C)
+        x = self.joints_embed(x)    # embed skeletons
         NM, TP, VP, _ = x.shape
-
-        # add pos & temp embed
-        x = x + self.pos_embed[:, :, :VP, :] + self.temp_embed[:, :TP, :, :]
+        x = x + self.pos_embed[:, :, :VP, :] + self.temp_embed[:, :TP, :, :] # add pos & temp embed
         x = x.reshape(NM, TP * VP, -1)
 
-        # apply Transformer blocks
         for idx, blk in enumerate(self.blocks):
-            x = blk(x)
+            x = blk(x)              # apply Transformer blocks
         
         x = self.norm(x)
         x = x.reshape(N, M, TP, VP, -1) # (B, 3, 100, 12, C)
-        x = self.head(x)
+
+        if self.protocol == "compute_representations":
+            x = x.permute(0, 1, 2, 4, 3)  # (N, M, T, C, J)
+            x = x.mean(dim=-1)            # (N, M, T, C)
+            x = x.mean(dim=1)             # (N, T, C)
+        
+        else:
+            x = self.head(x)
 
         return x
