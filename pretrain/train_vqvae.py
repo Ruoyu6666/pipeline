@@ -136,10 +136,10 @@ def compute_representations(model, loader, device ,args):
     model = model.to(device)
     model.eval()
     
-    all_representations = []
+    #all_representations = []
     all_encoding =  []
     all_encoding_indices = []
-    all_embeddings = []
+    #all_embeddings = []
 
     with torch.no_grad():
         for i, (x, _)  in enumerate(loader):
@@ -148,28 +148,28 @@ def compute_representations(model, loader, device ,args):
             #z = model.encoder(x)
             #z = model.pre_quant_conv(z)
             #vq_loss, x_recon, perplexity, min_encodings, min_encodings_indices = model.vq_layer(z)
-            _, x_recon, perplexity, min_encodings, min_encoding_indices, embeddings = model(x)
 
-            all_representations.append(torch.squeeze(x_recon).cpu().numpy())
-            #all_encoding.append(min_encodings.cpu().numpy())
+            vq_loss, x_recon, perplexity, min_encodings, min_encoding_indices = model(x)
+
+            #all_representations.append(torch.squeeze(x_recon).cpu().numpy())
+            all_encoding.append(min_encodings.cpu().numpy())
             all_encoding_indices.append(torch.squeeze(min_encoding_indices).cpu().numpy())
-            embeddings = torch.permute(embeddings, (0, 2, 1)) # representation
-            all_embeddings.append(torch.squeeze(embeddings).cpu().numpy())
+
+            #embeddings = torch.permute(embeddings, (0, 2, 1)) # representation
+            #all_embeddings.append(torch.squeeze(embeddings).cpu().numpy())
 
 
-    all_representations = np.stack(all_representations, axis=0)
+    #all_representations = np.stack(all_representations, axis=0)
+    all_encoding = np.stack(all_encoding, axis=0)
     all_encoding_indices = np.stack(all_encoding_indices, axis=0)
-    all_embeddings = np.stack(all_embeddings, axis=0)
+    #all_embeddings = np.stack(all_embeddings, axis=0)
 
-    #np.save(args.save_dir + '/representations/vqvae_representations.npy', all_representations)
+    np.save(args.save_dir + '/representations/vqvae_encodings.npy', all_encoding)
     np.save(args.save_dir + '/representations/vqvae_encoding_indices.npy', all_encoding_indices)
-    np.save(args.save_dir + '/representations/vqvae_embeddings.npy', all_embeddings)
+    #np.save(args.save_dir + '/representations/vqvae_embeddings.npy', all_embeddings)
     
     codebook = model.vq_layer.embedding.weight.cpu().detach().numpy()
     np.save(args.save_dir + '/representations/vqvae_codebook.npy', codebook)
-
-    return all_representations
-
 
 
 

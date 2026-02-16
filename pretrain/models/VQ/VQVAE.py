@@ -6,8 +6,30 @@ from .layers import Encoder, Decoder, VectorQuantizer
 
 
 
-
 class VQVAE(nn.Module):
+    def __init__(self, in_dim, h_dim, n_res_layers, res_h_dim,
+                 n_e, e_dim, beta, 
+                 kernel_size=[[],[],[]], stride=[[],[],[]], padding=[[],[],[]],
+                 compression_factor=2):
+        super(VQVAE, self).__init__()
+        
+        self.encoder = Encoder(in_dim, h_dim, n_res_layers, res_h_dim, kernel_size, stride, padding, compression_factor)
+        self.pre_quant_conv = nn.Conv1d(h_dim, e_dim, kernel_size=1, stride=1)
+        self.vq_layer = VectorQuantizer(n_e, e_dim, beta)
+        self.decoder = Decoder(e_dim, h_dim, in_dim, n_res_layers, res_h_dim, kernel_size, stride, padding, compression_factor)
+
+    def forward(self, x):
+        z = self.encoder(x)
+        z = self.pre_quant_conv(z)
+        vq_loss, z_q, perplexity, min_encodings, min_encoding_indices = self.vq_layer(z)
+        x_recon = self.decoder(z_q)
+
+        return vq_loss, x_recon, perplexity, min_encodings, min_encoding_indices
+    
+
+    
+
+class VQVAE2d(nn.Module):
     """
     VQ-VAE model that combines the encoder, vector quantizer, and decoder.
     Inputs:
@@ -25,7 +47,7 @@ class VQVAE(nn.Module):
                  n_e, e_dim, beta, 
                  kernel_size=[[],[],[]], stride=[[],[],[]], padding=[[],[],[]],
                  compression_factor=4):
-        super(VQVAE, self).__init__()
+        super(VQVAE2d, self).__init__()
         
         self.encoder = Encoder(in_dim, h_dim, n_res_layers, res_h_dim, kernel_size, stride, padding, compression_factor)
         self.projections =  nn.Linear(600, 1800) # intermediates result for represetation learning

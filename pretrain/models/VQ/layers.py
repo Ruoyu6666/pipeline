@@ -4,6 +4,21 @@ import numpy as np
 import torch.nn.functional as F
 
 
+class ResidualLayer1d(nn.Module):
+    def __init__(self, in_dim, h_dim, res_h_dim,):
+        super(ResidualLayer1d, self).__init__()
+        self._block = nn.Sequential(
+            nn.ReLU(True),
+            nn.Conv1d(in_dim, res_h_dim, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.ReLU(True),
+            nn.Conv1d(res_h_dim, h_dim, kernel_size=1, stride=1, bias=False)
+        )
+
+    def forward(self, x):
+        return x + self._block(x)
+    
+
+
 
 # Kernel size? Stride? Padding?
 class ResidualLayer(nn.Module):
@@ -28,7 +43,6 @@ class ResidualLayer(nn.Module):
 
 
 
-# Kernel size? Stride? Padding?
 class ResidualStack(nn.Module):
     """
     A stack of residual layers inputs:
@@ -53,8 +67,7 @@ class ResidualStack(nn.Module):
 # Kernel size? Stride? Padding? Compression factor?
 class Encoder(nn.Module):
     """
-    This is the q_theta (z|x) network. Given a data sample x q_theta  maps to the latent space x -> z.
-    For a VQ VAE, q_theta outputs parameters of a categorical distribution.
+    This is the q_theta (z|x) network. Given a data sample x q_theta  maps to the latent space x -> z. For a VQ VAE, q_theta outputs parameters of a categorical distribution.
 
     Inputs:
     - in_dim : the input dimension
@@ -68,9 +81,15 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         kernel = 4
         stride = 2
-        if compression_factor == 3:
-            pass
-            #self.STTFormer = nn.Sequential()
+        
+        if compression_factor == 2: # Conv1d, only use conv on temporal dimension
+            self.conv_stack = nn.Sequential(
+                nn.Conv1d(in_dim, h_dim // 2, kernel_size=kernel-1, stride=stride-1, padding=1),
+                nn.ReLU(),
+                nn.Conv1d(h_dim // 2, h_dim, kernel_size=kernel, stride=stride, padding=1),
+                ResidualLayer1d(h_dim, h_dim, res_h_dim),
+                nn.ReLU()
+                )
         """
         if compression_factor == 3:
             self.spatial_encoder = nn.Sequential(
@@ -109,7 +128,6 @@ class Encoder(nn.Module):
             
     def forward(self, x):
         """
-        # x: (B, T, N, 2)
         B, T, N, _ = x.shape
         x = x.reshape(B, T, -1)  # (B, T, N*2)
         
@@ -132,7 +150,7 @@ class Decoder(nn.Module):
     - res_h_dim : the hidden dimension of the residual block
     - n_res_layers : number of layers to stack
     """
-    def __init__(self, in_dim, h_dim, out_dim, # = in_dim of encoder 
+    def __init__(self, e_dim, h_dim, out_dim, # = in_dim of encoder 
                  n_res_layers, res_h_dim,
                  kernel_size=[], stride=[], padding=[],
                  compression_factor=12):
@@ -140,12 +158,17 @@ class Decoder(nn.Module):
 
         kernel = 4
         stride = 2
-        #if compression_factor == 3
-        
+
+        if compression_factor == 2:
+            self.inverse_conv_stack = nn.Sequential(
+                    nn.ConvTranspose1d(e_dim, h_dim, kernel_size=kernel-1, stride=stride-1, padding=1),
+                    ResidualLayer1d(h_dim, h_dim, res_h_dim),
+                    nn.ReLU(),
+                    nn.ConvTranspose1d(h_dim, out_dim, kernel_size=kernel, stride=stride, padding=1))    
         
         if compression_factor == 4:
             self.inverse_conv_stack = nn.Sequential(
-                    nn.ConvTranspose2d(in_dim, h_dim, kernel_size=kernel-1, stride=stride-1, padding=1),
+                    nn.ConvTranspose2d(e_dim, h_dim, kernel_size=kernel-1, stride=stride-1, padding=1),
                     ResidualStack(h_dim, h_dim, res_h_dim, n_res_layers),
                     nn.ConvTranspose2d(h_dim, h_dim // 2, kernel_size=kernel, stride=stride, padding=1),
                     nn.ReLU(),
@@ -153,7 +176,7 @@ class Decoder(nn.Module):
             
         if compression_factor == 12:
             self.inverse_conv_stack = nn.Sequential(
-                nn.ConvTranspose2d(in_dim, h_dim, kernel_size=kernel-1, stride=stride-1, padding=1),
+                nn.ConvTranspose2d(e_dim, h_dim, kernel_size=kernel-1, stride=stride-1, padding=1),
                 ResidualStack(h_dim, h_dim, res_h_dim, n_res_layers),
                 nn.ConvTranspose2d(h_dim, h_dim, kernel_size=kernel+1, stride=stride+1, padding=1),
                 nn.ReLU(),
@@ -163,7 +186,7 @@ class Decoder(nn.Module):
         
         if compression_factor == 24:
             self.inverse_conv_stack = nn.Sequential(
-                nn.ConvTranspose2d(in_dim, h_dim, kernel_size=(3, 2), stride=(3, 2)),
+                nn.ConvTranspose2d(e_dim, h_dim, kernel_size=(3, 2), stride=(3, 2)),
                 ResidualStack(h_dim, h_dim, res_h_dim, n_res_layers),
                 nn.ConvTranspose2d(h_dim, h_dim // 2, kernel_size=(1, 3), stride=(1, 3)),
                 nn.ReLU(),
@@ -176,6 +199,53 @@ class Decoder(nn.Module):
 
 
 class VectorQuantizer(nn.Module):
+   
+    def __init__(self, n_e, e_dim, beta):
+        super(VectorQuantizer, self).__init__()
+        self.n_e = n_e
+        self.e_dim = e_dim
+        self.beta = beta
+
+        self.embedding = nn.Embedding(self.n_e, self.e_dim)
+        self.embedding.weight.data.uniform_(-1/self.n_e, 1/self.n_e)
+    
+    def forward(self, z):
+        z = z.permute(0, 2, 1).contiguous()
+        z_flattened = z.view(-1, self.e_dim) # (B*L, C=e_dim) [32 * 600, 64]
+        # distances from z to embeddings e_j (z - e)^2 = z^2 + e^2 - 2 e * z
+        d = torch.sum(z_flattened**2, dim=1, keepdim=True) + \
+            torch.sum(self.embedding.weight**2, dim=1) - \
+            2 * torch.matmul(z_flattened, self.embedding.weight.t())
+        
+        # Encoding
+        min_encoding_indices = torch.argmin(d, dim=1).unsqueeze(1)
+        min_encodings = torch.zeros(min_encoding_indices.shape[0], self.n_e, device=z.device)
+        min_encodings.scatter_(1, min_encoding_indices, 1)
+
+        # Quantize and unflatten
+        quantized = torch.matmul(min_encodings, self.embedding.weight).view(z.shape)
+
+        # Loss
+        e_latent_loss = F.mse_loss(quantized.detach(), z)
+        q_latent_loss = F.mse_loss(quantized, z.detach())
+        loss = q_latent_loss + self.beta * e_latent_loss
+
+        quantized = z + (quantized - z).detach()
+
+        e_mean = torch.mean(min_encodings, dim=0)
+        perplexity = torch.exp(-torch.sum(e_mean * torch.log(e_mean + 1e-10)))
+        z_q = quantized.permute(0, 3, 1, 2).contiguous()
+
+        return loss, z_q, perplexity, self.embedding.weight, min_encoding_indices, min_encodings
+
+
+
+
+
+
+
+
+class VectorQuantizer2d(nn.Module):
     """
     Discretization bottleneck part of the VQ-VAE.
     
@@ -185,7 +255,7 @@ class VectorQuantizer(nn.Module):
     - beta : commitment cost used in loss term, beta * ||z_e(x)-sg[e]||^2
     """
     def __init__(self, n_e, e_dim, beta):
-        super(VectorQuantizer, self).__init__()
+        super(VectorQuantizer2d, self).__init__()
         self.n_e = n_e
         self.e_dim = e_dim
         self.beta = beta
@@ -201,8 +271,7 @@ class VectorQuantizer(nn.Module):
         quantization pipeline: 1. get encoder input (B,C,H,W)
                                2. flatten input to (B*H*W,C)
         """
-        # reshape z -> (batch, height, width, channel) and flatten
-        # z:[32, 450, 18, 64] compress factor==4
+        # reshape z -> (batch, height, width, channel) and flatten. z:[32, 450, 18, 64] compress factor==4
         z = z.permute(0, 2, 3, 1).contiguous()
         z_flattened = z.view(-1, self.e_dim) # (B*H*W, C=e_dim) [32 * 8100, 64]
         # distances from z to embeddings e_j (z - e)^2 = z^2 + e^2 - 2 e * z
