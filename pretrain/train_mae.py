@@ -30,8 +30,8 @@ def get_args_parser():
     parser.add_argument('--dim_in', default=2, type=int, help='input dimension')
     parser.add_argument('--dim_feat', default=128, type=int, help='feature dimension')
     parser.add_argument('--decoder_dim_feat', default=128, type=int, help='decoder feature dimension')
-    parser.add_argument('--depth', default=5, type=int, help='number of layers in the encoder')
-    parser.add_argument('--decoder_depth', default=2, type=int, help='number of layers in the decoder')
+    parser.add_argument('--depth', default=7, type=int, help='number of layers in the encoder')
+    parser.add_argument('--decoder_depth', default=3, type=int, help='number of layers in the decoder')
     parser.add_argument('--num_heads', default=8,  type=int, help='number of attention heads')
     parser.add_argument('--mlp_ratio', default=4, type=int, help='ratio of mlp hidden dim to embedding dim')
     parser.add_argument('--num_frames', default=300, type=int, help='number of frames in the input skeleton sequence')
@@ -50,17 +50,17 @@ def get_args_parser():
     """Dataset and DataLoader parameters"""
     parser.add_argument("--dataset",  type=str, default='mabe_mouse')
     parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/data/MaBe/mouse/mouse_triplet_train.npy')
-    parser.add_argument("--sliding_window", default=300, type=int)
+    parser.add_argument("--sliding_window", default=149, type=int)
     parser.add_argument("--sampling_rate", default=1, type=int)
     parser.add_argument("--if_fill_holes", default=False, type=str2bool)
     parser.add_argument("--cache_path", type=str, default='../data/tmp/mabe_mouse_train.pkl')
     parser.add_argument("--cache", default=False, type=str2bool) # if true cache processed data or load from cache
 
     # In foward function of STTFormer
-    parser.add_argument('--mask_ratio', default=0.9, type=float, help='Masking ratio (percentage of removed patches).')
+    parser.add_argument('--mask_ratio', default=0.85, type=float, help='Masking ratio (percentage of removed patches).')
     
     """Dataset augmentation and preprocessing"""
-    parser.add_argument("--data_augment", default=False, type=str2bool)
+    parser.add_argument("--data_augment", default=True, type=str2bool)
     parser.add_argument("--centeralign", action="store_true")
     parser.add_argument("--include_testdata", action="store_true")
 
@@ -69,7 +69,7 @@ def get_args_parser():
     
     """Training parameters"""
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--epochs", type=int, default=6)
+    parser.add_argument("--epochs", type=int, default=90)
     parser.add_argument("--learning_rate", type=float, default=5e-4)
     parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 
@@ -78,7 +78,7 @@ def get_args_parser():
     parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
     parser.add_argument("--ckpt_path", type=str, default=None) # checkpoint path for training
 
-    parser.add_argument("--model_path", type=str, default="./outputs/checkpoints/mae_checkpoint_epoch_3.pth") # model path for computing representation
+    parser.add_argument("--model_path", type=str, default="./outputs/checkpoints/mae_checkpoint_epoch_0_whole.pth") # model path for computing representation
 
     """Type of job"""
     parser.add_argument("--job", type=str, choices=["pretrain", "compute_representations"])
@@ -107,7 +107,7 @@ def train(model: torch.nn.Module, data_loader: Iterable,
     num_epochs = args.epochs - start_epoch
     print('Number of epochs to train:', num_epochs)
 
-    for epoch in range(start_epoch, args.epochs):
+    for epoch in range(start_epoch+1, args.epochs+1):
         model.train()
         results = {'embedding_loss': 0, 
                    'recon_errors': 0, 
@@ -126,7 +126,8 @@ def train(model: torch.nn.Module, data_loader: Iterable,
             
             if (batch_idx + 1) % args.log_interval == 0:
                 avg_loss = results["total_loss"] / (batch_idx + 1)
-                print(f"Epoch [{epoch}/{args.epochs}], Step [{batch_idx+1}/{len(data_loader)}], Loss: {avg_loss:.4f}")
+                print(loss.item())
+                print(f"Epoch [{epoch+1}/{args.epochs}], Step [{batch_idx+1}/{len(data_loader)}], Loss: {avg_loss:.4f}")
                 #writer.add_scalar('train/loss', avg_loss, epoch * len(data_loader) + batch_idx)
                 #results["total_loss"] = 0.0
 
@@ -137,7 +138,7 @@ def train(model: torch.nn.Module, data_loader: Iterable,
         
 
         # Save checkpoint
-        if args.save_dir and (epoch % 3 == 0 or epoch + 1 == args.epochs):
+        if args.save_dir and ((epoch % 3 == 0 or epoch == args.epochs)):
             checkpoint_path = os.path.join(args.save_dir, 'checkpoints', f'mae_checkpoint_epoch_{epoch}.pth')
             torch.save({
                 'epoch': epoch,
@@ -152,8 +153,9 @@ def train(model: torch.nn.Module, data_loader: Iterable,
 
 
 
-def compute_representations(model, data_loader, device ,args):
 
+
+def compute_representations(model, data_loader, device ,args):
     os.makedirs(args.save_dir + '/representations', exist_ok=True)
     model = model.to(device)
     model.eval()
@@ -171,7 +173,7 @@ def compute_representations(model, data_loader, device ,args):
 
     all_representations = np.concatenate(all_representations, axis=0)
     
-    np.save(args.save_dir + '/representations/mae_representations_test.npy', all_representations)
+    np.save(args.save_dir + '/representations/mae_representations.npy', all_representations)
 
 
 
@@ -192,7 +194,8 @@ if __name__ == "__main__":
                                      #patch_size=args.patch_size,
                                      cache_path=args.cache_path, cache=args.cache,
                                      augmentations=args.data_augment, #centeralign=args.centeralign,
-                                     include_testdata=args.include_testdata,)
+                                     include_testdata=True,)
+    
 
     data_loader = DataLoader(dataset_train, #sampler=sampler_train,
                              batch_size=args.batch_size, num_workers=args.num_workers,
@@ -235,15 +238,18 @@ if args.job == "pretrain":
 
 
 if args.job == "compute_representations":
-    path_test_data = args.path_to_data_dir.replace("train", "test")
-    dataset = MabeMouseDataset(path_to_data_dir=path_test_data,
+
+    # path_test_data = args.path_to_data_dir.replace("train", "test")
+    
+    dataset = MabeMouseDataset(path_to_data_dir=args.path_to_data_dir,
                                 sampling_rate=args.sampling_rate,
                                 num_frames=args.num_frames, 
                                 sliding_window=args.sliding_window,
                                 if_fill=args.if_fill_holes,
                                 #patch_size=args.patch_size,
                                 cache_path=args.cache_path, cache=False,
-                                augmentations=None,)
+                                augmentations=None,
+                                include_testdata=True)
 
     loader_test = DataLoader(dataset, #sampler=sampler_test, 
                              batch_size=args.batch_size, 

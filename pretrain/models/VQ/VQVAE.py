@@ -21,10 +21,10 @@ class VQVAE(nn.Module):
     def forward(self, x):
         z = self.encoder(x)
         z = self.pre_quant_conv(z)
-        vq_loss, z_q, perplexity, min_encodings, min_encoding_indices = self.vq_layer(z)
+        vq_loss, z_q, perplexity, min_encoding_indices = self.vq_layer(z)
         x_recon = self.decoder(z_q)
 
-        return vq_loss, x_recon, perplexity, min_encodings, min_encoding_indices
+        return vq_loss, x_recon, perplexity, z_q, min_encoding_indices
     
 
     

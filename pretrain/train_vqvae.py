@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from utils import *
 from models.VQ.VQVAE import VQVAE
 from datasets.mabe_mouse import MabeMouseDataset
+from datasets.latent import LatentRepresentationDataset
 
 
 
@@ -19,9 +20,9 @@ def get_args_parser():
     parser = argparse.ArgumentParser("VQ-VAE Training & Compute Representation", add_help=False)
     
     """Model Hyperparameters"""
-    parser.add_argument("--in_dim", type=int, default=3)
+    parser.add_argument("--in_dim", type=int, default=128)
     parser.add_argument("--n_hiddens", type=int, default=128)         # h_dim
-    parser.add_argument("--n_residual_hiddens", type=int, default=32) # res_h_dim
+    parser.add_argument("--n_residual_hiddens", type=int, default=64) # res_h_dim
     parser.add_argument("--n_residual_layers", type=int, default=2)   # n_res_layers
     parser.add_argument("--embedding_dim", type=int, default=64)      # e_dim
     parser.add_argument("--n_embeddings", type=int, default=100)      # K: n_e 512
@@ -29,15 +30,18 @@ def get_args_parser():
 
     """Dataset and DataLoader parameters"""
     parser.add_argument("--dataset",  type=str, default='mabe_mouse')
-    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/data/MaBe/mouse/mouse_triplet_train.npy')
-    parser.add_argument("--num_frames", default=900, type=int)
+    #parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/data/MaBe/mouse/mouse_triplet_train.npy')
+    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/code/pipeline/pretrain/outputs/representations/mae_representations.npy')
+
+    
+    parser.add_argument("--num_frames", default=300, type=int)
     parser.add_argument("--sliding_window", default=1, type=int)
     parser.add_argument("--sampling_rate", default=1, type=int)
     parser.add_argument("--if_fill_holes", default=False, type=str2bool)
     parser.add_argument("--patch_size", default=(3, 1, 24), type = int )
     parser.add_argument("--cache_path", type=str, default='./data/tmp/mabe_mouse_train.pkl')
     parser.add_argument("--cache", default=False, type=str2bool) # if true cache processed data or load from cache
-    parser.add_argument("--compression_factor", type=int, default=24)
+    parser.add_argument("--compression_factor", type=int, default=2)
     
     """Dataset augmentation and preprocessing"""
     parser.add_argument("--data_augment", default=True, type=str2bool)
@@ -48,7 +52,7 @@ def get_args_parser():
     
     """Training parameters"""
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--n_updates", type=int, default=1500)
+    parser.add_argument("--n_updates", type=int, default=4000)
     parser.add_argument("--learning_rate", type=float, default=3e-4)
     
     """Saving and logging"""
@@ -84,12 +88,13 @@ def train(model, loader_train, optimizer, device, writer, timestamp, args):
                    'total_loss': 0,
                    'perplexities': 0}
         
-        for i, (x, _)  in enumerate(tqdm(loader_train, total=len(loader_train))):
+        for i, x in enumerate(tqdm(loader_train, total=len(loader_train))):
         #for i, (x, _) in enumerate(tqdm(islice(loader_train, 100), total=100)): # len(loader_train): 45050
             x = x.to(device)
+            x = torch.permute(x, (0, 2, 1)) # [32, 128, 600]
             optimizer.zero_grad()
 
-            embedding_loss, x_hat, perplexity, _, _, _ = model(x)
+            embedding_loss, x_hat, perplexity, z_q, min_encoding_indices = model(x)
             recon_loss = torch.mean((x_hat - x)**2)
             loss = recon_loss + embedding_loss
             loss.backward()
@@ -115,14 +120,20 @@ def train(model, loader_train, optimizer, device, writer, timestamp, args):
         print(f'Epoch {epoch}/{num_epochs} - Loss: {avg_total_loss:.4f},'
               f'Recon: {avg_recon_error:.4f}, Embed: {avg_embed_error:.4f}, Perplexity: {avg_perplexity:.2f}')
         
+        if epoch % 10 == 0:
+            save_checkpoint(model, optimizer, epoch, args)
+            print('Saved best model at epoch ', epoch)
+        
+        """
         if avg_total_loss < best_loss:
             best_loss = avg_total_loss
             save_checkpoint(model, optimizer, epoch, args)
             print('Saved best model at epoch ', epoch)
+        """
     
     # Save final model and results
-    save_model(model, optimizer, args)
-    save_results(results, args, timestamp)
+    save_model(model, optimizer, args) # CHEKC PATH
+    save_results(results, args)
 
 
 
@@ -142,17 +153,16 @@ def compute_representations(model, loader, device ,args):
     #all_embeddings = []
 
     with torch.no_grad():
-        for i, (x, _)  in enumerate(loader):
+        for i, x in enumerate(loader):
         #for i, (x, _) in enumerate(tqdm(islice(loader, 100), total=100)):
             x = x.to(device)
-            #z = model.encoder(x)
-            #z = model.pre_quant_conv(z)
-            #vq_loss, x_recon, perplexity, min_encodings, min_encodings_indices = model.vq_layer(z)
-
-            vq_loss, x_recon, perplexity, min_encodings, min_encoding_indices = model(x)
+            x = x.permute(0, 2, 1)
+            z = model.encoder(x)
+            z = model.pre_quant_conv(z)
+            vq_loss, min_encodings, perplexity, min_encoding_indices = model.vq_layer(z)
 
             #all_representations.append(torch.squeeze(x_recon).cpu().numpy())
-            all_encoding.append(min_encodings.cpu().numpy())
+            all_encoding.append(torch.squeeze(min_encodings).permute(1,0).cpu().numpy())
             all_encoding_indices.append(torch.squeeze(min_encoding_indices).cpu().numpy())
 
             #embeddings = torch.permute(embeddings, (0, 2, 1)) # representation
@@ -190,7 +200,7 @@ if __name__ == "__main__":
 
 if args.job == "train":
     """Set up data set and data loaders"""
-    #training_data, validation_data, training_loader, validation_loader, x_train_var = load_data_and_data_loaders(args.dataset, args.batch_size)
+    """
     dataset_train = MabeMouseDataset(path_to_data_dir=args.path_to_data_dir,
                                      sampling_rate=args.sampling_rate,
                                      num_frames=args.num_frames, 
@@ -201,9 +211,13 @@ if args.job == "train":
                                      augmentations=args.data_augment, #centeralign=args.centeralign,
                                      include_testdata=args.include_testdata,)
     
+    """
+    dataset_train = LatentRepresentationDataset(path_to_latent_representations=args.path_to_data_dir)
+
     loader_train = DataLoader(dataset_train, #sampler=sampler_train,
                              batch_size=args.batch_size, num_workers=args.num_workers,
                              pin_memory=args.pin_mem, drop_last=True,)
+    
 
     """Set up optimizer and training loop"""
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, amsgrad=True)
@@ -216,8 +230,10 @@ if args.job == "train":
 
 if args.job == "compute_representations":
     model.load_state_dict(torch.load(args.ckpt_path, map_location=device, weights_only=False)["model"])
-    path_test_data = args.path_to_data_dir.replace("train", "test")
-
+    #path_test_data = args.path_to_data_dir.replace("representations_train", "representations_test")
+    path_test_data = args.path_to_data_dir
+    print(args.path_to_data_dir)
+    """
     dataset = MabeMouseDataset(path_to_data_dir=path_test_data,
                                 sampling_rate=args.sampling_rate,
                                 num_frames=args.num_frames, 
@@ -226,6 +242,8 @@ if args.job == "compute_representations":
                                 patch_size=args.patch_size,
                                 cache_path=args.cache_path, cache=args.cache,
                                 augmentations=None,)
+    """
+    dataset = LatentRepresentationDataset(path_to_latent_representations=path_test_data, if_include_test=False)
 
     loader_test = DataLoader(dataset, #sampler=sampler_test, batch_size=args.batch_size, 
                              num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=False,)

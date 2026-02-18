@@ -39,7 +39,7 @@ def make_dirs(save_dir):
 
 
 
-def save_checkpoint(model, optimizer, epoch, args, type):
+def save_checkpoint(model, optimizer, epoch, args):
     """Saves the model checkpoint"""
     SAVE_CHECKPOINT_PATH = args.save_dir + 'checkpoints'
     checkpoint = {

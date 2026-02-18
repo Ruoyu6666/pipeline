@@ -88,7 +88,6 @@ class Encoder(nn.Module):
                 nn.ReLU(),
                 nn.Conv1d(h_dim // 2, h_dim, kernel_size=kernel, stride=stride, padding=1),
                 ResidualLayer1d(h_dim, h_dim, res_h_dim),
-                nn.ReLU()
                 )
         """
         if compression_factor == 3:
@@ -210,16 +209,16 @@ class VectorQuantizer(nn.Module):
         self.embedding.weight.data.uniform_(-1/self.n_e, 1/self.n_e)
     
     def forward(self, z):
-        z = z.permute(0, 2, 1).contiguous()
-        z_flattened = z.view(-1, self.e_dim) # (B*L, C=e_dim) [32 * 600, 64]
+        z = z.permute(0, 2, 1).contiguous() # [32, 300, 64]
+        z_flattened = z.view(-1, self.e_dim) # (B*L, C=e_dim) [9600, 64]
         # distances from z to embeddings e_j (z - e)^2 = z^2 + e^2 - 2 e * z
         d = torch.sum(z_flattened**2, dim=1, keepdim=True) + \
             torch.sum(self.embedding.weight**2, dim=1) - \
             2 * torch.matmul(z_flattened, self.embedding.weight.t())
         
         # Encoding
-        min_encoding_indices = torch.argmin(d, dim=1).unsqueeze(1)
-        min_encodings = torch.zeros(min_encoding_indices.shape[0], self.n_e, device=z.device)
+        min_encoding_indices = torch.argmin(d, dim=1).unsqueeze(1) # [9600, 1]
+        min_encodings = torch.zeros(min_encoding_indices.shape[0], self.n_e, device=z.device) # num_frames, n_e
         min_encodings.scatter_(1, min_encoding_indices, 1)
 
         # Quantize and unflatten
@@ -234,10 +233,9 @@ class VectorQuantizer(nn.Module):
 
         e_mean = torch.mean(min_encodings, dim=0)
         perplexity = torch.exp(-torch.sum(e_mean * torch.log(e_mean + 1e-10)))
-        z_q = quantized.permute(0, 3, 1, 2).contiguous()
+        z_q = quantized.permute(0, 2, 1).contiguous()
 
-        return loss, z_q, perplexity, self.embedding.weight, min_encoding_indices, min_encodings
-
+        return loss, z_q, perplexity, min_encoding_indices
 
 
 

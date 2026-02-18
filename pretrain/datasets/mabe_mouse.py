@@ -7,7 +7,7 @@ import torch
 from torchvision import transforms
 
 from .dataset import SkeletonDataset
-from .augmentations import *
+from .augmentations import GaussianNoise, Reflect, Rotation
 
 
 
@@ -30,8 +30,8 @@ class MabeMouseDataset(SkeletonDataset):
                  include_testdata: bool = False,
                  **kwargs):
         
-
         self.include_testdata = include_testdata
+        
         if augmentations:
             gs = (self.DEFAULT_GRID_SIZE, self.DEFAULT_GRID_SIZE)
             self.augmentations = transforms.Compose(
@@ -52,7 +52,7 @@ class MabeMouseDataset(SkeletonDataset):
         self.raw_data = np.load(self.path_to_data_dir, allow_pickle=True).item()
         self.raw_data = dict(islice(list(self.raw_data.items()), 5))
         if self.include_testdata:
-            raw_data_test = np.load(os.path.join(self.path, "mouse_triplet_test.npy"), allow_pickle=True).item()
+            raw_data_test = np.load(self.path_to_data_dir.replace("_train.npy", "_test.npy"), allow_pickle=True).item()
             self.raw_data["sequences"].update(raw_data_test["sequences"])
 
 
@@ -94,20 +94,26 @@ class MabeMouseDataset(SkeletonDataset):
         
         for seq_ix, (seq_name, sequence) in enumerate(sequences.items()): #index ,(mouse_name, value)
             
-            vec_seq = sequence["keypoints"] # (1800, 3, 12, 2)
+            vec_seq = sequence["keypoints"] # one seqeunces (1800, 3, 12, 2)
             if self.if_fill:
                 vec_seq = self.fill_holes(vec_seq)
             if self.sampling_rate > 1:
                 vec_seq = vec_seq[:: self.sampling_rate]
-            seq_keypoints.append(vec_seq)
+            # Pads the beginning and end of the sequence with duplicate frames
+            pad_vec = np.pad(vec_seq,
+                             ((sub_seq_length// 2, sub_seq_length - 1 - sub_seq_length // 2), (0, 0), (0, 0), (0, 0)), mode="edge", )
+            seq_keypoints.append(pad_vec)
             
-            # Store the labels for each subsequence (if annotations are available)
-            #for i in range(len(self.annotation_names)):
+            #for i in range(len(self.annotation_names)): # Store the labels for each subsequence (if annotations are available)
             #    self.labels[self.annotation_names[i]].append(sequence["annotations"][i])
-            keypoints_ids.extend([(seq_ix, i) for i in np.arange(0, len(vec_seq) - sub_seq_length + 1, self.sliding_window)]) # (1600 * num_samples/sequences, T=600, M=3, V=12, C=2)
+            keypoints_ids.extend([(seq_ix, i) for i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)]) # (1600 * num_samples/sequences, T=600, M=3, V=12, C=2)
             
-        self.seq_keypoints = np.array(seq_keypoints, dtype=np.float32) # (1600, 1800, C=3, 12, 2) # not processed
+        self.seq_keypoints = np.array(seq_keypoints, dtype=np.float32) # (1600, 1800, C=3, 12, 2) -> 
+        
+        print("seq_keypoints shape: ", self.seq_keypoints.shape)
+        
         self.keypoints_ids = keypoints_ids
+        print("keypoints_ids length: ", len(self.keypoints_ids))
         # for label_name in self.annotation_names:
         #    self.labels[label_name] = np.array(self.labels[label_name], dtype=np.float32)
 
@@ -127,24 +133,23 @@ class MabeMouseDataset(SkeletonDataset):
                          "Delete this file or set cache=False if processing changed.")
         with open(self.cache_path, "rb") as fp:
             # self.seq_keypoints, self.labels = pickle.load(fp)
-            self.seq_keypoints, self.labels = pickle.load(fp)
+            self.seq_keypoints = pickle.load(fp)
    
     
     def normalize(self, data):
         """Scale by dimensions of image and mean-shift to center of image."""
         state_dim = data.shape[-1] // 2
-
         shift = np.array([self.DEFAULT_GRID_SIZE / 2, self.DEFAULT_GRID_SIZE / 2] * state_dim)
         scale = shift.copy()
 
         return (data - shift) / scale
 
     
-    # Version 1
     def prepare_subsequence_sample(self, sequence: np.ndarray): # sequence :(sample_length, 3, 12, 2)
         if self.augmentations:
             sequence = self.augmentations(sequence)
         #sequence = sequence.reshape(self.max_keypoints_len, -1)      # simply flatten
+        
         keypoints = self.normalize(sequence) # sequnece should be in shape (sample_length, 3*12*2)
         #if self.centeralign:
         #    keypoints = keypoints.reshape(self.max_keypoints_len, *self.KEYFRAME_SHAPE)

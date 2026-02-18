@@ -171,8 +171,6 @@ class Block(nn.Module):
 
 
 
-
-
 """ DropBlock, DropPath
 PyTorch implementations of DropBlock and DropPath (Stochastic Depth) regularization layers.
 Papers:
