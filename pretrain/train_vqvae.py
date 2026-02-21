@@ -23,7 +23,7 @@ def get_args_parser():
     parser.add_argument("--in_dim", type=int, default=128)
     parser.add_argument("--n_hiddens", type=int, default=128)         # h_dim
     parser.add_argument("--n_residual_hiddens", type=int, default=64) # res_h_dim
-    parser.add_argument("--n_residual_layers", type=int, default=2)   # n_res_layers
+    parser.add_argument("--n_residual_layers", type=int, default=1)   # n_res_layers
     parser.add_argument("--embedding_dim", type=int, default=64)      # e_dim
     parser.add_argument("--n_embeddings", type=int, default=100)      # K: n_e 512
     parser.add_argument("--beta", type=float, default=.25)
@@ -52,8 +52,8 @@ def get_args_parser():
     
     """Training parameters"""
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--n_updates", type=int, default=4000)
-    parser.add_argument("--learning_rate", type=float, default=3e-4)
+    parser.add_argument("--n_updates", type=int, default=6400)
+    parser.add_argument("--learning_rate", type=float, default=2e-3) # do not reduce learning rate for now, as training is not that long. Can add lr scheduler later if needed.
     
     """Saving and logging"""
     parser.add_argument("--log_interval", type=int, default=50)
@@ -154,7 +154,7 @@ def compute_representations(model, loader, device ,args):
 
     with torch.no_grad():
         for i, x in enumerate(loader):
-        #for i, (x, _) in enumerate(tqdm(islice(loader, 100), total=100)):
+        #for i, x in enumerate(tqdm(islice(loader, 100), total=100)):
             x = x.to(device)
             x = x.permute(0, 2, 1)
             z = model.encoder(x)
@@ -165,18 +165,13 @@ def compute_representations(model, loader, device ,args):
             all_encoding.append(torch.squeeze(min_encodings).permute(1,0).cpu().numpy())
             all_encoding_indices.append(torch.squeeze(min_encoding_indices).cpu().numpy())
 
-            #embeddings = torch.permute(embeddings, (0, 2, 1)) # representation
-            #all_embeddings.append(torch.squeeze(embeddings).cpu().numpy())
-
 
     #all_representations = np.stack(all_representations, axis=0)
     all_encoding = np.stack(all_encoding, axis=0)
     all_encoding_indices = np.stack(all_encoding_indices, axis=0)
-    #all_embeddings = np.stack(all_embeddings, axis=0)
 
     np.save(args.save_dir + '/representations/vqvae_encodings.npy', all_encoding)
     np.save(args.save_dir + '/representations/vqvae_encoding_indices.npy', all_encoding_indices)
-    #np.save(args.save_dir + '/representations/vqvae_embeddings.npy', all_embeddings)
     
     codebook = model.vq_layer.embedding.weight.cpu().detach().numpy()
     np.save(args.save_dir + '/representations/vqvae_codebook.npy', codebook)
@@ -204,7 +199,7 @@ if args.job == "train":
     dataset_train = MabeMouseDataset(path_to_data_dir=args.path_to_data_dir,
                                      sampling_rate=args.sampling_rate,
                                      num_frames=args.num_frames, 
-                                     sliding_window=args.sliding_window,
+                                     sliding_window=args.num_frames-1,
                                      if_fill=args.if_fill_holes,
                                      patch_size=args.patch_size,
                                      cache_path=args.cache_path, cache=args.cache,
@@ -213,6 +208,7 @@ if args.job == "train":
     
     """
     dataset_train = LatentRepresentationDataset(path_to_latent_representations=args.path_to_data_dir)
+    
 
     loader_train = DataLoader(dataset_train, #sampler=sampler_train,
                              batch_size=args.batch_size, num_workers=args.num_workers,

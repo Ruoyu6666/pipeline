@@ -29,6 +29,8 @@ class SkeletonMAE(nn.Module):
         self.joints_embed = SkeleEmbed(dim_in, dim_feat, num_frames, num_joints, patch_size, t_patch_size)
         self.pos_drop = nn.Dropout(p=drop_rate)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
+        
+        #self.dim_feat_list = [dim_feat * (2 ** i) for i in range(depth)]
         self.blocks = nn.ModuleList([
             Block(
                 dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, 
@@ -105,6 +107,7 @@ class SkeletonMAE(nn.Module):
 
 
     def forward_encoder(self, x, mask_ratio): # x: [3B, 300, 12, 2]
+        
         x = self.joints_embed(x) # embed skeletons
         NM, TP, VP, _ = x.shape
         x = x + self.pos_embed[:, :, :VP, :] + self.temp_embed[:, :TP, :, :]  # add pos & temp embed

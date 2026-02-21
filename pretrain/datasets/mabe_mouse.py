@@ -25,7 +25,7 @@ class MabeMouseDataset(SkeletonDataset):
                  if_fill = True,
                  # patch_size: tuple = (6, 1, 2), 
                  cache_path = None, 
-                 cache = True, 
+                 cache = False, 
                  augmentations = True, #centeralign: bool = False, 
                  include_testdata: bool = False,
                  **kwargs):
@@ -99,21 +99,24 @@ class MabeMouseDataset(SkeletonDataset):
                 vec_seq = self.fill_holes(vec_seq)
             if self.sampling_rate > 1:
                 vec_seq = vec_seq[:: self.sampling_rate]
-            # Pads the beginning and end of the sequence with duplicate frames
+            
+            
+            #  For training
             pad_vec = np.pad(vec_seq,
                              ((sub_seq_length// 2, sub_seq_length - 1 - sub_seq_length // 2), (0, 0), (0, 0), (0, 0)), mode="edge", )
             seq_keypoints.append(pad_vec)
-            
+            keypoints_ids.extend([(seq_ix, i) for i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
+            """
+            # For compute representation
+            seq_keypoints.append(vec_seq)
+            keypoints_ids.extend([(seq_ix, i) for i in np.arange(0, len(vec_seq) - sub_seq_length + 1, self.sliding_window)])
+            """
             #for i in range(len(self.annotation_names)): # Store the labels for each subsequence (if annotations are available)
             #    self.labels[self.annotation_names[i]].append(sequence["annotations"][i])
-            keypoints_ids.extend([(seq_ix, i) for i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)]) # (1600 * num_samples/sequences, T=600, M=3, V=12, C=2)
             
         self.seq_keypoints = np.array(seq_keypoints, dtype=np.float32) # (1600, 1800, C=3, 12, 2) -> 
-        
-        print("seq_keypoints shape: ", self.seq_keypoints.shape)
-        
         self.keypoints_ids = keypoints_ids
-        print("keypoints_ids length: ", len(self.keypoints_ids))
+
         # for label_name in self.annotation_names:
         #    self.labels[label_name] = np.array(self.labels[label_name], dtype=np.float32)
 

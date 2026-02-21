@@ -1,8 +1,5 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
+# Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+# This source code is licensed under the license found in the LICENSE file in the root directory of this source tree.
 # --------------------------------------------------------
 # References:
 # DeiT: https://github.com/facebookresearch/deit
@@ -65,7 +62,8 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
 
         loss_value_reduce = misc.all_reduce_mean(loss_value)
         if log_writer is not None and (data_iter_step + 1) % accum_iter == 0:
-            """ We use epoch_1000x as the x-axis in tensorboard.
+            """ 
+            We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
             epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)

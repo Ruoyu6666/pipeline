@@ -171,6 +171,7 @@ class TimeMIL(nn.Module):
         
         
     def forward(self, x, warmup=False): #x:[15, 640, 2]
+        
         if self.if_interval:
             x = self.start_conv(x)
 

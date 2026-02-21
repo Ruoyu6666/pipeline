@@ -158,7 +158,7 @@ def main():
     parser.add_argument('--save_dir', default='./savemodel/', type=str, help='the directory used to save all the output')
     parser.add_argument('--epoch_des', default=10, type=int, help='turn on warmup')
     parser.add_argument('--embed', default=128, type=int, help='Number of embedding')
-    parser.add_argument('--batchsize', default=64, type=int, help='batchsize')
+    parser.add_argument('--batchsize', default=32, type=int, help='batchsize')
 
     parser.add_argument('--if_interval', default=False, type=bool, help='if split the whole time series to intervals, each interval as an instance')
     parser.add_argument('--instance_len', default=30, type=int, help='the length of instance')
@@ -211,16 +211,18 @@ def main():
             X.append(mouse_X['embeddings'][indices[0]:indices[1]]) #(13, 1800)
         X = np.stack(X)
         """
-        X = np.load("/home/rguo_hpc/myfolder/code/pipeline/pretrain/outputs/representations/mae_representations_test.npy")
-        print(f'original X shape: {X.shape}')  #(3736, 1800, 128)
+        X = np.load("/home/rguo_hpc/myfolder/code/pipeline/pretrain/outputs/representations/mae_representations.npy")[1600:] #(1600, 1800, 128)
+        print(f'X shape: {X.shape}') #(1600, 1800, 128)
         # load label
         y = load_pickle('/home/rguo_hpc/myfolder/code/pipeline/data/mouse_test_labels.pkl')["strain"] #(3736,)
+
         from sklearn.model_selection import train_test_split
         Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.25, random_state=42)
-        Xtr = torch.from_numpy(Xtr)
-        Xte = torch.from_numpy(Xte)
+        Xtr = torch.from_numpy(Xtr)#.permute(0,2,1).float() #(2802, 128, 1800) -> (2802, 1800, 128)
+        Xte = torch.from_numpy(Xte)#.permute(0,2,1).float()  
         ytr = F.one_hot(torch.tensor(ytr)).float()
         yte = F.one_hot(torch.tensor(yte)).float()
+
         trainset = TensorDataset(Xtr,ytr)
         testset = TensorDataset(Xte, yte)
 

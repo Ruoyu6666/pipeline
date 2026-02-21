@@ -8,9 +8,9 @@ class LatentRepresentationDataset(Dataset):
     
     def __init__(self, path_to_latent_representations: str, if_include_test = True):
         self.latent_representations = torch.from_numpy(np.load(path_to_latent_representations)).float()
-        if if_include_test:
-            path_to_test = path_to_latent_representations.replace("representations_train", "representations_test")
-            self.latent_representations = torch.cat([self.latent_representations, torch.from_numpy(np.load(path_to_test)).float()], dim=0)
+        #if if_include_test:
+        #    path_to_test = path_to_latent_representations.replace("representations_train", "representations_test")
+        #    self.latent_representations = torch.cat([self.latent_representations, torch.from_numpy(np.load(path_to_test)).float()], dim=0)
         print(f"Loaded latent representations from {path_to_latent_representations} with shape {self.latent_representations.shape}")
 
     def __len__(self):
