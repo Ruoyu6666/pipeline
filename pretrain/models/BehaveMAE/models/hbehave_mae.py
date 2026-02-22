@@ -51,19 +51,17 @@ class HBehaveMAE(GeneralizedHiera):
             norm_layer=norm_layer,
             **kwdargs,
         )
-        print(f"Mask spatial shape: {self.mask_spatial_shape}")
         del self.norm, self.head
         encoder_dim_out = self.projections[-1].out_features
         self.encoder_norm = norm_layer(encoder_dim_out)
 
         overall_q_strides = list(map(lambda elements: reduce(mul, elements), zip(*self.q_strides)))
-        self.mask_unit_spatial_shape_final = [i // s for i, s in zip(self.mask_unit_size, overall_q_strides)]
-        self.tokens_spatial_shape_final = [i // s for i, s in zip(self.tokens_spatial_shape, overall_q_strides)]
-        print(f"Mask spatial shape final: {self.mask_unit_spatial_shape_final}" f"Tokens spatial shape final: {self.tokens_spatial_shape_final}")
+        self.mask_unit_spatial_shape_final = [i // s for i, s in zip(self.mask_unit_size, overall_q_strides)] # [1,1, 1]
+        self.tokens_spatial_shape_final = [i // s for i, s in zip(self.tokens_spatial_shape, overall_q_strides)] # [60, 1, 1]
+
         # --------------------------------------------------------------------------
         # Multi-scale fusion heads
-        curr_mu_size = self.mask_unit_size
-        print(f"Mask unit size (in tokens): {self.mask_unit_size}, {self.mu_size} flattened")
+        curr_mu_size = self.mask_unit_size # self.mask_unit_size [5,3,1], self.mu_size: 15
         self.multi_scale_fusion_heads = nn.ModuleList()
         for ix, i in enumerate(self.stage_ends[: self.q_pool]):  # resolution constant after q_pool
             kernel = [i // s for i, s in zip(curr_mu_size, self.mask_unit_spatial_shape_final)]

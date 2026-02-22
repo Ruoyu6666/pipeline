@@ -131,8 +131,7 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         return self.max_keypoints_len
 
     def __len__(self):
-        print(f"Number of keypoint sequences: {len(self.keypoints_ids)}")
-        return len(self.keypoints_ids)
+        return len(self.keypoints_ids) # 96000
 
     @staticmethod
     def fill_holes(data):

@@ -73,19 +73,15 @@ class MaskUnitAttention(nn.Module):
 
 
 class HieraBlock(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        dim_out: int,
-        heads: int,
-        mlp_ratio: float = 4.0,
-        drop_path: float = 0.0,
-        norm_layer: nn.Module = nn.LayerNorm,
-        act_layer: nn.Module = nn.GELU,
-        q_stride: int = 1,
-        window_size: int = 0,
-        use_mask_unit_attn: bool = False,
-    ):
+    def __init__(self, dim: int, dim_out: int,
+                 heads: int, mlp_ratio: float = 4.0,
+                 drop_path: float = 0.0,
+                 norm_layer: nn.Module = nn.LayerNorm,
+                 act_layer: nn.Module = nn.GELU,
+                 q_stride: int = 1,
+                 window_size: int = 0,
+                 use_mask_unit_attn: bool = False,
+                 ):
         super().__init__()
 
         self.dim = dim
@@ -163,31 +159,30 @@ class PatchEmbed(nn.Module):
 
 
 class GeneralizedHiera(nn.Module):
-    def __init__(
-        self,
-        input_size: Tuple[int, ...] = (400, 1, 72),
-        in_chans: int = 1,
-        embed_dim: int = 64,  # initial embed dim
-        num_heads: int = 2,   # initial number of heads
-        out_embed_dims: Tuple[int, ...] = (8, 16, 42, 128),
-        num_classes: int = 100,
-        non_hierarchical: bool = False,
-        stages: Tuple[int, ...] = (3, 4, 5),
-        q_strides: List[Tuple[int, ...]] = [(2, 1, 4), (2, 1, 6)],
-        mask_unit_attn: Tuple[bool, ...] = (True, False, False),
-        dim_mul: float = 2.0,
-        head_mul: float = 2.0,
-        patch_kernel: Tuple[int, ...] = (7, 7),
-        patch_stride: Tuple[int, ...] = (4, 4),
-        patch_padding: Tuple[int, ...] = (3, 3),
-        mlp_ratio: float = 4.0,
-        drop_path_rate: float = 0.0,
-        norm_layer: nn.Module = partial(nn.LayerNorm, eps=1e-6),
-        head_dropout: float = 0.0,
-        head_init_scale: float = 0.001,
-        sep_pos_embed: bool = False,
-        **kwargs,  # attention!
-    ):
+    def __init__(self,
+                input_size: Tuple[int, ...] = (400, 1, 72),
+                in_chans: int = 1,
+                embed_dim: int = 64,  # initial embed dim
+                num_heads: int = 2,   # initial number of heads
+                out_embed_dims: Tuple[int, ...] = (8, 16, 42, 128),
+                num_classes: int = 100,
+                non_hierarchical: bool = False,
+                stages: Tuple[int, ...] = (3, 4, 5),
+                q_strides: List[Tuple[int, ...]] = [(2, 1, 4), (2, 1, 6)],
+                mask_unit_attn: Tuple[bool, ...] = (True, False, False),
+                dim_mul: float = 2.0,
+                head_mul: float = 2.0,
+                patch_kernel: Tuple[int, ...] = (7, 7),
+                patch_stride: Tuple[int, ...] = (4, 4),
+                patch_padding: Tuple[int, ...] = (3, 3),
+                mlp_ratio: float = 4.0,
+                drop_path_rate: float = 0.0,
+                norm_layer: nn.Module = partial(nn.LayerNorm, eps=1e-6),
+                head_dropout: float = 0.0,
+                head_init_scale: float = 0.001,
+                sep_pos_embed: bool = False,
+                **kwargs,  # attention!
+        ):
         super().__init__()
 
         depth = sum(stages)
